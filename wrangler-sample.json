@@ -1,0 +1,12 @@
+{
+    "$schema": "node_modules/wrangler/config-schema.json",
+    "name": "my-app",
+    "main": "src/index.ts",
+    "compatibility_date": "2025-02-13",
+    
+    "vars": {
+      "DATABASE_URL":"prisma accelerate connection pool link",
+      "JWT_SECRET":"abcdeffff"
+    }
+    
+  }
