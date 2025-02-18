@@ -1,8 +1,9 @@
 import { PrismaClient } from "@prisma/client/edge";
 import { withAccelerate } from "@prisma/extension-accelerate";
 import { Hono } from "hono";
-import { sign,verify } from "hono/jwt";
-import { Bindings } from "../../node_modules/hono/dist/types/types";
+import {verify } from "hono/jwt";
+import {  createPostInput, updatePostInput } from "common-dev-pav"
+
 type bindi={
 	
         DATABASE_URL: string;
@@ -37,6 +38,11 @@ blogRouter.post('/', async (c) => {
 		datasourceUrl: c.env?.DATABASE_URL	,
 	}).$extends(withAccelerate());
 	const body = await c.req.json();
+	const {success}=createPostInput.safeParse(body);
+	if(!success){
+		c.status(400);
+		return c.json({error:"Invalid Input"});
+	}
 	const post = await prisma.post.create({
 		data: {
 			title: body.title,
@@ -55,7 +61,11 @@ blogRouter.put('/', async (c) => {
 	}).$extends(withAccelerate());
 
 	const body = await c.req.json();
-	
+	const {success}=updatePostInput.safeParse(body);
+	if(!success){
+		c.status(400);
+		return c.json({error:"Invalid Input"});
+	}
 	const blog =await prisma.post.update({
 		where: {
 			id: body.id,
@@ -75,7 +85,7 @@ blogRouter.get('/bulk', async (c) => {
 	const prisma = new PrismaClient({
 		datasourceUrl: c.env?.DATABASE_URL	,
 	}).$extends(withAccelerate());
-	console.log("bulkkkk.")
+	
 	const posts = await prisma.post.findMany();
 	console.log(posts);
 	return c.json({posts});
