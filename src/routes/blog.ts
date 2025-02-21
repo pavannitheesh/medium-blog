@@ -1,108 +1,227 @@
 import { PrismaClient } from "@prisma/client/edge";
 import { withAccelerate } from "@prisma/extension-accelerate";
 import { Hono } from "hono";
-import {verify } from "hono/jwt";
-import {  createPostInput, updatePostInput } from "common-dev-pav"
+import authMiddleware from "../authMiddleware";
+import {
+	blogCreateInput,
+	blogUpdateInput,
+} from "common-dev-pav";
+import * as moment from "moment-timezone";
 
-type bindi={
-	
-        DATABASE_URL: string;
-        JWT_SECRET: string;
- 
-}
-type vari={
-	userId: string
-}
 export const blogRouter = new Hono<{
-    Bindings:bindi,
-	Variables:vari
+	Bindings: {
+		DATABASE_URL: string;
+		JWT_SECRET: string;
+	};
+	Variables: {
+		userId: string;
+	};
 }>();
-blogRouter.use('*', async (c, next) => {
-	const jwt = c.req.header('Authorization');
-	if (!jwt) {
-		c.status(401);
-		return c.json({ error: "unauthorized" });
-	}
-	const token = jwt.split(' ')[1];
-	const payload = await verify(token, c.env.JWT_SECRET);
-	if (!payload) {
-		c.status(401);
-		return c.json({ error: "unauthorized" });
-	}
-	c.set('userId', payload.id);
-	await next()
-})
-blogRouter.post('/', async (c) => {
-	const userId = c.get('userId');
-	const prisma = new PrismaClient({
-		datasourceUrl: c.env?.DATABASE_URL	,
-	}).$extends(withAccelerate());
+
+blogRouter.use("/*", authMiddleware);
+
+blogRouter.post("/", async (c) => {
 	const body = await c.req.json();
-	const {success}=createPostInput.safeParse(body);
-	if(!success){
-		c.status(400);
-		return c.json({error:"Invalid Input"});
+	const { success } = blogCreateInput.safeParse(body);
+
+	if (!success) {
+		c.status(411);
+		return c.json({
+			message: "Invalid inputs",
+		});
 	}
-	const post = await prisma.post.create({
-		data: {
-			title: body.title,
-			content: body.content,
-			authorId: userId
-		}
-	});
-	return c.json({
-		id: post.id
-	});
-})
-blogRouter.put('/', async (c) => {
-	const userId = c.get('userId');
+
 	const prisma = new PrismaClient({
-		datasourceUrl: c.env?.DATABASE_URL	,
+		datasourceUrl: c.env?.DATABASE_URL,
 	}).$extends(withAccelerate());
 
-	const body = await c.req.json();
-	const {success}=updatePostInput.safeParse(body);
-	if(!success){
-		c.status(400);
-		return c.json({error:"Invalid Input"});
-	}
-	const blog =await prisma.post.update({
-		where: {
-			id: body.id,
-			authorId: userId
-		},
-		data: {
-			title: body.title,
-			content: body.content
-		}
-	});
-	console.log("updated")
-	
+	try {
+		// Get the current time in Indian Standard Time (IST)
+		const indianTime = moment
+			.tz("Asia/Kolkata")
+			.format("D/M/YYYY, h:mm:ss");
 
-	return c.text('updated post');
+		const blog = await prisma.post.create({
+			data: {
+				title: body.title,
+				content: body.content,
+				authorId: c.get("userId"),
+				postedOn: indianTime,
+				published: body.published,
+			},
+		});
+
+		return c.json({
+			message: "Blog created: " + blog.id,
+		});
+	} catch (error) {
+		console.log("Error: ", error);
+		c.status(403);
+		return c.json({
+			message: "Internal Server Error",
+		});
+	}
 });
-blogRouter.get('/bulk', async (c) => {
-	const prisma = new PrismaClient({
-		datasourceUrl: c.env?.DATABASE_URL	,
-	}).$extends(withAccelerate());
-	
-	const posts = await prisma.post.findMany();
-	console.log(posts);
-	return c.json({posts});
-})
 
-blogRouter.get('/:id', async (c) => {
-	const id = c.req.param('id');
-	console.log(id);
-	const prisma = new PrismaClient({
-		datasourceUrl: c.env?.DATABASE_URL	,
-	}).$extends(withAccelerate());
-	
-	const post = await prisma.post.findUnique({
-		where: {
-			id :id
-		}
-	});
+blogRouter.put("/", async (c) => {
+	const body = await c.req.json();
+	const { success } = blogUpdateInput.safeParse(body);
+	if (!success) {
+		c.status(411);
+		return c.json({
+			message: "Invalid inputs",
+		});
+	}
 
-	return c.json(post);
-})
+	const prisma = new PrismaClient({
+		datasourceUrl: c.env?.DATABASE_URL,
+	}).$extends(withAccelerate());
+
+	try {
+		const blog = await prisma.post.update({
+			where: {
+				id: body.id,
+				authorId: c.get("userId"),
+			},
+			data: {
+				title: body.title,
+				content: body.content,
+				published: body.published,
+			},
+		});
+
+		return c.json({
+			message: "Blog updated Successfully: " + blog.id,
+		});
+	} catch (error) {
+		console.log("Error: ", error);
+		c.status(403);
+		return c.json({
+			message: "Internal Server Error",
+		});
+	}
+});
+
+blogRouter.get("/bulk", async (c) => {
+	const prisma = new PrismaClient({
+		datasourceUrl: c.env?.DATABASE_URL,
+	}).$extends(withAccelerate());
+
+	try {
+		const blogs = await prisma.post.findMany({
+			where: {
+				published: true,
+			},
+			select: {
+				content: true,
+				title: true,
+				id: true,
+				postedOn: true,
+				published: true,
+				authorId: true,
+				author: {
+					select: { name: true },
+				},
+			},
+		});
+
+		return c.json({
+			blogs,
+		});
+	} catch (error) {
+		console.log("Error: " + error);
+		c.status(403);
+		return c.json({ message: "Internal Server Error" });
+	}
+});
+
+blogRouter.get("/both", async (c) => {
+	console.log("bjsadlkfj");
+	const prisma = new PrismaClient({
+		datasourceUrl: c.env?.DATABASE_URL,
+	}).$extends(withAccelerate());
+
+	try {
+		const user = await prisma.user.findUnique({
+			where: {
+				id: c.get("userId"),
+			},
+			select: {
+				id: true,
+				name: true,
+				email: true,
+				posts: true,
+			},
+		});
+		return c.json({ user });
+	} catch (error) {
+		console.log("Error: ", error);
+		c.status(403);
+		c.json({
+			message: "Internal Server Error",
+		});
+	}
+});
+
+blogRouter.get("/:id", async (c) => {
+	const id = c.req.param("id");
+
+	const prisma = new PrismaClient({
+		datasourceUrl: c.env?.DATABASE_URL,
+	}).$extends(withAccelerate());
+
+	try {
+		const blog = await prisma.post.findUnique({
+			where: {
+				id: id,
+			},
+			select: {
+				author: {
+					select: {
+						name: true,
+					},
+				},
+				content: true,
+				title: true,
+				id: true,
+				postedOn: true,
+				published: true,
+				authorId: true,
+			},
+		});
+		return c.json({ blog });
+	} catch (error) {
+		console.log("Error: ", error);
+		c.status(403);
+		c.json({
+			message: "Internal Server Error",
+		});
+	}
+});
+
+blogRouter.delete("/:id", async (c) => {
+	const id = c.req.param("id");
+
+	const prisma = new PrismaClient({
+		datasourceUrl: c.env?.DATABASE_URL,
+	}).$extends(withAccelerate());
+
+	try {
+		const res = await prisma.post.delete({
+			where: {
+				id: id,
+				authorId: c.get("userId"),
+			},
+		});
+		console.log(res);
+		return c.json({
+			message: "Post deleted successfully",
+		});
+	} catch (error) {
+		console.log("Error: ", error);
+		c.status(403);
+		return c.json({
+			message: "Internal Server Error",
+		});
+	}
+});

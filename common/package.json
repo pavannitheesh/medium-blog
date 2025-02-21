@@ -1,6 +1,6 @@
 {
   "name": "common-dev-pav",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Used for type checking and linting",
   "main": "dist/index.js",
   "scripts": {
